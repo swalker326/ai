@@ -886,6 +886,12 @@ importers:
 
   packages/typescript/ai-openai:
     dependencies:
+      '@tanstack/ai-utils':
+        specifier: workspace:*
+        version: link:../ai-utils
+      '@tanstack/openai-base':
+        specifier: workspace:*
+        version: link:../openai-base
       openai:
         specifier: ^6.9.1
         version: 6.10.0(ws@8.18.3)(zod@4.2.1)
