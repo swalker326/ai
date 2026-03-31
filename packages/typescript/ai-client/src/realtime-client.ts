@@ -409,8 +409,8 @@ export class RealtimeClient {
     this.unsubscribers.push(
       this.connection.on(
         'tool_call',
-        async ({ toolCallId, toolName, input }) => {
-          const tool = this.clientTools.get(toolName)
+        async ({ toolCallId, toolCallName, input }) => {
+          const tool = this.clientTools.get(toolCallName)
           if (tool?.execute) {
             try {
               const output = await tool.execute(input)
