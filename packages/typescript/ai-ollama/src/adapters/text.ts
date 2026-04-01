@@ -21,6 +21,11 @@ import type {
 } from 'ollama'
 import type { StreamChunk, TextOptions, Tool } from '@tanstack/ai'
 
+/** Cast an event object to StreamChunk. Adapters construct events with string
+ *  literal types which are structurally compatible with the EventType enum. */
+const asChunk = (chunk: Record<string, unknown>) =>
+  chunk as unknown as StreamChunk
+
 export type OllamaTextModel =
   | (typeof OLLAMA_TEXT_MODELS)[number]
   | (string & {})
@@ -205,13 +210,13 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
       // Emit RUN_STARTED on first chunk
       if (!hasEmittedRunStarted) {
         hasEmittedRunStarted = true
-        yield {
+        yield asChunk({
           type: 'RUN_STARTED',
           runId,
           threadId,
           model: chunk.model,
           timestamp,
-        }
+        })
       }
 
       const handleToolCall = (toolCall: ToolCall): Array<StreamChunk> => {
@@ -226,15 +231,17 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
         // Emit TOOL_CALL_START if not already emitted for this tool call
         if (!toolCallsEmitted.has(toolCallId)) {
           toolCallsEmitted.add(toolCallId)
-          events.push({
-            type: 'TOOL_CALL_START',
-            toolCallId,
-            toolCallName: actualToolCall.function.name || '',
-            toolName: actualToolCall.function.name || '',
-            model: chunk.model,
-            timestamp,
-            index: actualToolCall.function.index,
-          })
+          events.push(
+            asChunk({
+              type: 'TOOL_CALL_START',
+              toolCallId,
+              toolCallName: actualToolCall.function.name || '',
+              toolName: actualToolCall.function.name || '',
+              model: chunk.model,
+              timestamp,
+              index: actualToolCall.function.index,
+            }),
+          )
         }
 
         // Parse input
@@ -250,15 +257,17 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
         }
 
         // Emit TOOL_CALL_END
-        events.push({
-          type: 'TOOL_CALL_END',
-          toolCallId,
-          toolCallName: actualToolCall.function.name || '',
-          toolName: actualToolCall.function.name || '',
-          model: chunk.model,
-          timestamp,
-          input: parsedInput,
-        })
+        events.push(
+          asChunk({
+            type: 'TOOL_CALL_END',
+            toolCallId,
+            toolCallName: actualToolCall.function.name || '',
+            toolName: actualToolCall.function.name || '',
+            model: chunk.model,
+            timestamp,
+            input: parsedInput,
+          }),
+        )
 
         return events
       }
@@ -276,38 +285,38 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
         // Close reasoning events if still open
         if (reasoningMessageId && !hasClosedReasoning) {
           hasClosedReasoning = true
-          yield {
+          yield asChunk({
             type: 'REASONING_MESSAGE_END',
             messageId: reasoningMessageId,
             model: chunk.model,
             timestamp,
-          }
-          yield {
+          })
+          yield asChunk({
             type: 'REASONING_END',
             messageId: reasoningMessageId,
             model: chunk.model,
             timestamp,
-          }
+          })
         }
 
         // Emit TEXT_MESSAGE_END if we had text content
         if (hasEmittedTextMessageStart) {
-          yield {
+          yield asChunk({
             type: 'TEXT_MESSAGE_END',
             messageId,
             model: chunk.model,
             timestamp,
-          }
+          })
         }
 
-        yield {
+        yield asChunk({
           type: 'RUN_FINISHED',
           runId,
           threadId,
           model: chunk.model,
           timestamp,
           finishReason: toolCallsEmitted.size > 0 ? 'tool_calls' : 'stop',
-        }
+        })
         continue
       }
 
@@ -315,41 +324,41 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
         // Close reasoning before text starts
         if (reasoningMessageId && !hasClosedReasoning) {
           hasClosedReasoning = true
-          yield {
+          yield asChunk({
             type: 'REASONING_MESSAGE_END',
             messageId: reasoningMessageId,
             model: chunk.model,
             timestamp,
-          }
-          yield {
+          })
+          yield asChunk({
             type: 'REASONING_END',
             messageId: reasoningMessageId,
             model: chunk.model,
             timestamp,
-          }
+          })
         }
 
         // Emit TEXT_MESSAGE_START on first text content
         if (!hasEmittedTextMessageStart) {
           hasEmittedTextMessageStart = true
-          yield {
+          yield asChunk({
             type: 'TEXT_MESSAGE_START',
             messageId,
             model: chunk.model,
             timestamp,
             role: 'assistant',
-          }
+          })
         }
 
         accumulatedContent += chunk.message.content
-        yield {
+        yield asChunk({
           type: 'TEXT_MESSAGE_CONTENT',
           messageId,
           model: chunk.model,
           timestamp,
           delta: chunk.message.content,
           content: accumulatedContent,
-        }
+        })
       }
 
       if (chunk.message.tool_calls && chunk.message.tool_calls.length > 0) {
@@ -369,44 +378,44 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
           reasoningMessageId = generateId('msg')
 
           // Spec REASONING events
-          yield {
+          yield asChunk({
             type: 'REASONING_START',
             messageId: reasoningMessageId,
             model: chunk.model,
             timestamp,
-          }
-          yield {
+          })
+          yield asChunk({
             type: 'REASONING_MESSAGE_START',
             messageId: reasoningMessageId,
             role: 'reasoning' as const,
             model: chunk.model,
             timestamp,
-          }
+          })
 
           // Legacy STEP events (kept during transition)
-          yield {
+          yield asChunk({
             type: 'STEP_STARTED',
             stepName: stepId,
             stepId,
             model: chunk.model,
             timestamp,
             stepType: 'thinking',
-          }
+          })
         }
 
         accumulatedReasoning += chunk.message.thinking
 
         // Spec REASONING content event
-        yield {
+        yield asChunk({
           type: 'REASONING_MESSAGE_CONTENT',
           messageId: reasoningMessageId!,
           delta: chunk.message.thinking,
           model: chunk.model,
           timestamp,
-        }
+        })
 
         // Legacy STEP event
-        yield {
+        yield asChunk({
           type: 'STEP_FINISHED',
           stepName: stepId || generateId('step'),
           stepId: stepId || generateId('step'),
@@ -414,7 +423,7 @@ export class OllamaTextAdapter<TModel extends string> extends BaseTextAdapter<
           timestamp,
           delta: chunk.message.thinking,
           content: accumulatedReasoning,
-        }
+        })
       }
     }
   }
